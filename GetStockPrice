@@ -1,0 +1,45 @@
+
+```{r}
+
+require(tidyquant)
+require(gridExtra)
+require(ggplot2)
+
+getStock <- function(ticker, fromdate = "2020-01-01", asWeekly=FALSE, plotchart=FALSE){
+
+	pricedata <- ticker%>%
+		              tq_get(get="stock.prices",from=fromdate)
+	
+	if (asWeekly==TRUE){
+  		pricedata <- pricedata%>%
+  					tq_transmute(select=close,mutate_fun=periodReturn,period="weekly",
+  		           type="arithmetic",col_rename="close")
+     
+  		if (plotchart==TRUE){ 
+    		g1 <- ggplot(data=pricedata,aes(x=date)) + geom_line(aes(y=close)) + labs(title=ticker)
+    		return(g1)
+    	}		
+  		
+	} else {
+    	  
+    	if (plotchart==TRUE){ 
+    		g1 <- ggplot(data=pricedata,aes(x=date,y=close,open=open,close=close,high=high,low=low))+
+    				geom_candlestick()+geom_bbands(ma_fun=SMA,sd=2,n=20,fill=palette_light()[[1]])+labs(title=ticker)
+    		return(g1)
+    	}
+	}
+	
+	return(pricedata)
+	
+}
+
+```
+
+
+
+```{r}
+
+getStock("AMD",asWeekly=FALSE,plotchart=TRUE)
+
+```
+
