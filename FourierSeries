@@ -6,7 +6,6 @@ require(ggplot2)
 
 ```
 
-#my work
 
 ```{r fourier functions}
 
@@ -19,10 +18,8 @@ fourier_fitting = function(x, deg){
   
   #inverse
   ifrr = fft(frr/length(x), inverse = TRUE)
-  
+
   return(data.frame(time=t, est = Mod(ifrr)))
-
-
 }
 
 ```
@@ -51,10 +48,10 @@ findwave <- function(x,pars){
 }
 
 #optim function
-wavestats<-tryCatch(
-        optim(c(1,length(data)/n,1),findwave,x=wavedf[n],method="L-BFGS-B")$par,
-        error=function(e){0}
-      ) 
+#wavestats<-tryCatch(
+#        optim(c(1,length(data)/n,1),findwave,x=wavedf[n],method="L-BFGS-B")$par,
+#        error=function(e){0}
+#      ) 
 
 ```
 
@@ -63,44 +60,47 @@ wavestats<-tryCatch(
 
 ```{r create fourier series of N waves}
 
-data = AMD$close[1:150]
+datalen = 300
+buffer = 20
+wavenum = 5
+data = sin(seq(1,datalen)*.1 + runif(datalen)) + runif(datalen)
 
 train_test_split = .7
 
 endpt = round(length(data)*train_test_split,0)
-x_train = data[1:endpt]
+x_train = data[buffer:endpt]
 x_test = data[(endpt+1):length(data)]
 
 #-----------------------------------
 
 fwd = length(x_test)
-prevdf = data.frame(time=seq(1,length(data)), est = rep(0,length(data)))
-wavedf = data.frame(time=seq(1,length(data)))
+prevwv = rep(0,length(x_train))
+wavedf = data.frame(time=seq(1,length(x_train) +length(x_test)))
 
-#each distinct wave
-for (n in seq(1,6)){
+#wave decomposition
+for (n in seq(1,wavenum)){
   ff_df = fourier_fitting(x_train, deg = n)
   
   #deconstruct fourier wavesum to extrapolate
-  wave = ff_df$est - head(prevdf$est,nrow(wavedf) - fwd)
-
+  wave = ff_df$est - prevwv
+                          
   period = length(x_train)/n
   
-  #extrapolation
-  extension = lapply(seq(1,fwd),function(i){ 
-                (period - floor(period))*(wave[floor(length(wave) - period + (i %% period) )]) + 
-                (1-(period - floor(period)))*(wave[floor(length(wave) - period + (i %% period) +1 )])
-              }) %>% unlist()
   
   #add to wave df  
-  wavedf[n+1] = c(wave, extension)
+  wavedf[n+1] = c(wave, wave[1:fwd])
   names(wavedf)[n+1] = paste("wave",n, sep="-")
-  prevdf = ff_df
+  
+  #wavedf[n+2] = c(ff_df$est, extension)
+  
+  prevwv = ff_df$est
   
 }
 
 #plot individual waves
-wp <- ggplot(data=wavedf,aes(x=time)) + geom_line(aes(y=V2),color="red") + geom_line(aes(y=V3),color="blue") + geom_line(aes(y=V4),color="orange")
+wavedf_melt<-melt(wavedf,id.vars="time")
+
+wp <- ggplot(data=wavedf_melt,aes(x=time)) + geom_line(aes(y=value, color=variable))
 plot(wp)
 
 
@@ -108,7 +108,7 @@ plot(wp)
 
 #create df of wave sums (reconstructed with extrapolation)
 cmsum = rep(0,nrow(wavedf))
-wavesums = data.frame(time=seq(1,length(data)))
+wavesums = data.frame(time=seq(1,length(x_train) + length(x_test)))
 for (w in seq(2,ncol(wavedf))){
   cmsum = cmsum + wavedf[w]
   wavesums[w] = cmsum 
@@ -122,25 +122,24 @@ for (w in seq(2,ncol(wavedf))){
   print(difference)
 }
 
-wavesums$act<-data  
-wavesums_test <- wavesums[(length(data)+1) : nrow(wavedf),]
+wavesums$act<-data[buffer:length(data)]  
+wavesums_test <- wavesums[(length(x_train) + buffer + 1) : nrow(wavedf),]
 
 wavesums_melt <-melt(wavesums,id.vars=c("time"))
 
 #plotting
-wst <- ggplot(data=wavesums,aes(x=time)) + geom_rect(xmin = length(x_train), xmax = length(data), ymin=0, ymax=max(data), fill="grey") + 
+wst <- ggplot(data=wavesums,aes(x=time)) + geom_rect(xmin = length(x_train), xmax = length(data), ymin=min(data)*2, ymax=max(data)*2, 
+                                                     fill="grey") + 
                               geom_line(aes(y=act)) + geom_line(aes(y=V2),color="red") + 
                               geom_line(aes(y=V2.1),color="blue") + geom_line(aes(y=V2.2),color="orange") + 
                               geom_line(aes(y=V2.3),color="green")
 
-wstmelt <- ggplot(data=wavesums_melt,aes(x=time)) + geom_rect(xmin = length(x_train), xmax = length(data), ymin=0, ymax=max(data), fill="grey") + 
+wstmelt <- ggplot(data=wavesums_melt,aes(x=time)) + geom_rect(xmin = length(x_train), xmax = length(data),  ymin=min(data)*2, ymax=max(data)*2, fill="grey") + 
                               geom_line(aes(y=value,color=variable))
-
 
 plot(wstmelt)
 
 ```
-
 
 
 
