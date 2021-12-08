@@ -1,0 +1,146 @@
+
+```{r}
+
+require(reshape2)
+require(ggplot2)
+
+```
+
+#my work
+
+```{r fourier functions}
+
+fourier_fitting = function(x, deg){
+  
+  #fft
+  frr = fft(x)
+  t = seq(from = 1, to = length(x))
+  frr[(deg + 2):(length(frr) - deg)]<-0
+  
+  #inverse
+  ifrr = fft(frr/length(x), inverse = TRUE)
+  
+  return(data.frame(time=t, est = Mod(ifrr)))
+
+
+}
+
+```
+
+
+```{r}
+
+sinfit <- function(x,pars){
+  a = pars[1]
+  b = pars[2]
+  c = pars[3]
+  d = pars[4]
+  
+  t = seq(1,length(x))
+  
+  return(sin(a * t + d)*b + c)
+  
+}
+
+findwave <- function(x,pars){
+
+  fit<-sinfit(x,pars)
+  ssq = sum((fit - x)^2)
+
+  return(ssq)
+}
+
+#optim function
+wavestats<-tryCatch(
+        optim(c(1,length(data)/n,1),findwave,x=wavedf[n],method="L-BFGS-B")$par,
+        error=function(e){0}
+      ) 
+
+```
+
+
+
+
+```{r create fourier series of N waves}
+
+data = AMD$close[1:150]
+
+train_test_split = .7
+
+endpt = round(length(data)*train_test_split,0)
+x_train = data[1:endpt]
+x_test = data[(endpt+1):length(data)]
+
+#-----------------------------------
+
+fwd = length(x_test)
+prevdf = data.frame(time=seq(1,length(data)), est = rep(0,length(data)))
+wavedf = data.frame(time=seq(1,length(data)))
+
+#each distinct wave
+for (n in seq(1,6)){
+  ff_df = fourier_fitting(x_train, deg = n)
+  
+  #deconstruct fourier wavesum to extrapolate
+  wave = ff_df$est - head(prevdf$est,nrow(wavedf) - fwd)
+
+  period = length(x_train)/n
+  
+  #extrapolation
+  extension = lapply(seq(1,fwd),function(i){ 
+                (period - floor(period))*(wave[floor(length(wave) - period + (i %% period) )]) + 
+                (1-(period - floor(period)))*(wave[floor(length(wave) - period + (i %% period) +1 )])
+              }) %>% unlist()
+  
+  #add to wave df  
+  wavedf[n+1] = c(wave, extension)
+  names(wavedf)[n+1] = paste("wave",n, sep="-")
+  prevdf = ff_df
+  
+}
+
+#plot individual waves
+wp <- ggplot(data=wavedf,aes(x=time)) + geom_line(aes(y=V2),color="red") + geom_line(aes(y=V3),color="blue") + geom_line(aes(y=V4),color="orange")
+plot(wp)
+
+
+#---------------
+
+#create df of wave sums (reconstructed with extrapolation)
+cmsum = rep(0,nrow(wavedf))
+wavesums = data.frame(time=seq(1,length(data)))
+for (w in seq(2,ncol(wavedf))){
+  cmsum = cmsum + wavedf[w]
+  wavesums[w] = cmsum 
+  names(wavesums)[w] = paste("FFT",w, sep="-")
+}
+
+
+#compare x_test to extrapolated wave sums
+for (w in seq(2,ncol(wavedf))){
+  difference = sum((wavesums[(length(x_train)+1) : nrow(wavedf),w] - x_test)^2)
+  print(difference)
+}
+
+wavesums$act<-data  
+wavesums_test <- wavesums[(length(data)+1) : nrow(wavedf),]
+
+wavesums_melt <-melt(wavesums,id.vars=c("time"))
+
+#plotting
+wst <- ggplot(data=wavesums,aes(x=time)) + geom_rect(xmin = length(x_train), xmax = length(data), ymin=0, ymax=max(data), fill="grey") + 
+                              geom_line(aes(y=act)) + geom_line(aes(y=V2),color="red") + 
+                              geom_line(aes(y=V2.1),color="blue") + geom_line(aes(y=V2.2),color="orange") + 
+                              geom_line(aes(y=V2.3),color="green")
+
+wstmelt <- ggplot(data=wavesums_melt,aes(x=time)) + geom_rect(xmin = length(x_train), xmax = length(data), ymin=0, ymax=max(data), fill="grey") + 
+                              geom_line(aes(y=value,color=variable))
+
+
+plot(wstmelt)
+
+```
+
+
+
+
